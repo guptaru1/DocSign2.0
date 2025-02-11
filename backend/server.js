@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 const uploadsDir = path.join(__dirname, 'uploads');
+require('dotenv').config();
 if (!fs.existsSync(uploadsDir)){
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -26,6 +27,9 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
+console.log(process.env.HUGGINGFACE_API_KEY);
+
+
 
 app.use(cors({
   origin: 'http://localhost:3000',
@@ -117,6 +121,8 @@ The monthly rent shall be [RENT_AMOUNT] dollars, payable on the first day of eac
     `
   }
 ];
+
+
 
 app.post('/api/generate-document', async (req, res) => {
   try {
@@ -328,13 +334,14 @@ app.get('/api/documents/:id/pdf', (req, res) => {
       return res.status(404).json({ error: 'PDF file not found' });
     }
     
-    // Update these headers to allow iframe display
+    // Update these headers
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
-    // Remove or modify X-Frame-Options to allow iframe display
-    res.setHeader('X-Frame-Options', 'ALLOWALL');
-    // Add Access-Control-Allow-Origin header
+    res.removeHeader('X-Frame-Options'); // Remove this header completely
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
     res.sendFile(filePath);
   } catch (error) {
@@ -383,7 +390,122 @@ app.post('/api/waitlist', async (req, res) => {
   }
 });
 
+// Add this new endpoint for text analysis
+app.post('/api/analyze', async (req, res) => {
+  try {
+    const { text, instructions } = req.body;
+
+    const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: `
+          Instructions: ${instructions}
+          
+          Text to analyze:
+          "${text}"
+          
+          Provide your explanation:
+        `,
+        parameters: {
+          max_length: 1000,
+          temperature: 0.7,
+          top_p: 0.9,
+        }
+      })
+    });
+
+    const result = await response.json();
+    console.log(result);
+    res.json({ explanation: result[0].generated_text });
+  } catch (error) {
+    console.error('Analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze text' });
+  }
+});
+const axios = require('axios');
+
+app.post('/api/analyz', async (req, res) => {
+  try {
+    const { text, instructions } = req.body;
+
+    // Make sure that the Hugging Face API key is set in the environment variable
+    if (!process.env.HUGGINGFACE_API_KEY) {
+      return res.status(400).json({ error: 'Hugging Face API key is missing' });
+    }
+
+    // Make the API request using axios to the BART model endpoint
+    const response = await axios.post(
+      'https://api-inference.huggingface.co/models/google/bigbird-pegasus-large-arxiv',
+      {
+        inputs: text,  // The input text for summarization or analysis
+        parameters: {
+          max_length: 500, // You can adjust this as needed for summarization
+          min_length: 50,  // You can adjust this to control summary length
+          temperature: 0.7, // Controls randomness in text generation
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const result = response.data;
+
+    // Check if the response has any error
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Output the result for debugging
+    console.log(result);
+
+    // The BART model typically responds with 'summary_text' for summarization tasks
+    res.json({ explanation: result[0].summary_text || result[0].generated_text });
+  } catch (error) {
+    console.error('Analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze text' });
+  }
+});
+  
+app.get('/api/model-metadata', async (req, res) => {
+  try {
+    // Get model metadata from HuggingFace API
+    const response = await axios.get(
+      'https://huggingface.co/api/models/meta-llama/Llama-2-7b-chat-hf',
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`, // Pass your HuggingFace API key here
+        },
+      }
+    );
+
+    // Check if the response data is valid
+    if (!response.data) {
+      throw new Error('Failed to fetch model metadata');
+    }
+
+    // Return the model metadata
+    res.json({
+      modelMetadata: response.data,
+    });
+    console.log("fetched data orioerly");
+  } catch (error) {
+    console.error('Error fetching metadata:', error);
+    res.status(500).json({ error: 'Failed to fetch model metadata' });
+  }
+});
+
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(process.env.HUGGINGFACE_API_KEY);
+
 }); 

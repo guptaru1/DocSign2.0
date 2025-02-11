@@ -54,17 +54,35 @@ const PDFViewer = styled.iframe`
   height: 100%;
   border: none;
   pointer-events: all;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
 `;
 
 const SelectionTooltip = styled.div`
   position: fixed;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.9);
   color: white;
-  padding: 8px;
-  border-radius: 4px;
+  padding: 16px;
+  border-radius: 8px;
+  max-width: 400px;
+  max-height: 300px;
+  overflow-y: auto;
   display: ${props => props.visible ? 'block' : 'none'};
   top: ${props => props.y}px;
   left: ${props => props.x}px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+`;
+
+const SelectionIndicator = styled.div`
+  background: rgba(255, 255, 0, 0.3);
+  position: absolute;
+  pointer-events: none;
 `;
 
 const VoiceControls = styled.div`
@@ -134,6 +152,16 @@ const GenerateButton = styled(ControlButton)`
   }
 `;
 
+const SelectionOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1000;
+`;
+
 const DocumentViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -146,6 +174,7 @@ const DocumentViewer = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const iframeRef = useRef(null);
   const containerRef = useRef(null);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   useEffect(() => {
     const loadDocument = async () => {
@@ -165,53 +194,107 @@ const DocumentViewer = () => {
   }, [id]);
 
   useEffect(() => {
-    const handleTextSelection = () => {
-      const selection = window.getSelection();
-      const text = selection.toString().trim();
-      
-      if (text && containerRef.current) {
-        console.log("Selected text:", text);
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        const containerRect = containerRef.current.getBoundingClientRect();
+    const handleIframeLoad = () => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         
-        setSelectionCoords({
-          x: Math.min(
-            rect.x + rect.width / 2 - containerRect.x,
-            containerRect.width - 200
-          ),
-          y: Math.max(rect.y - containerRect.y - 40, 100)
-        });
-        setSelectedText(text);
+        const handleTextSelection = () => {
+          const selection = iframeDoc.getSelection();
+          const text = selection?.toString().trim();
+          
+          if (text) {
+            console.log("Selected text:", text);
+            
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const iframeRect = iframe.getBoundingClientRect();
+            
+            // Calculate position relative to the viewport
+            const x = iframeRect.left + rect.left + (rect.width / 2);
+            const y = iframeRect.top + rect.top - 60; // Position above the selection
+            
+            setSelectionCoords({
+              x: Math.min(x, window.innerWidth - 250),
+              y: Math.max(y, 100)
+            });
+            setSelectedText(text);
+            setShowTooltip(true);
+          }
+        };
+
+        // Handle clicks outside the selection
+        const handleClickOutside = (event) => {
+          if (!event.target.closest('.selection-tooltip')) {
+            setShowTooltip(false);
+          }
+        };
+
+        iframeDoc.addEventListener('mouseup', handleTextSelection);
+        iframeDoc.addEventListener('touchend', handleTextSelection);
+        window.addEventListener('click', handleClickOutside);
+
+        return () => {
+          iframeDoc.removeEventListener('mouseup', handleTextSelection);
+          iframeDoc.removeEventListener('touchend', handleTextSelection);
+          window.removeEventListener('click', handleClickOutside);
+        };
+      } catch (error) {
+        console.error('Error setting up iframe listeners:', error);
       }
     };
 
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('mouseup', handleTextSelection);
-      container.addEventListener('touchend', handleTextSelection);
-
-      return () => {
-        container.removeEventListener('mouseup', handleTextSelection);
-        container.removeEventListener('touchend', handleTextSelection);
-      };
+    // Add load event listener to iframe
+    const iframe = iframeRef.current;
+    if (iframe) {
+      iframe.addEventListener('load', handleIframeLoad);
+      return () => iframe.removeEventListener('load', handleIframeLoad);
     }
   }, []);
 
   const handleVoiceAssistant = async () => {
-    if (!selectedText) {
-      alert('Please select some text to explain');
-      return;
-    }
+    // For testing, use the sample text
+    const testText = `1. FIXED-TERM AGREEMENT (LEASE):
+Tenants agree to lease this dwelling for a fixed term of one year, beginning July 1, 2012 and
+ending June 30, 2013. Upon expiration, this Agreement shall become a month-to-month agreement
+AUTOMATICALLY, UNLESS either Tenants or Owners notify the other party in writing at least 30 days
+prior to expiration that they do not wish this Agreement to continue on any basis.
+2. RENT:
+Tenant agrees to pay Landlord as base rent the sum of $685 per month, due and payable monthly in
+advance on the 1st day of each month during the term of this agreement. The first month's rent is required
+to be submitted on or before move-in.
+3. FORM OF PAYMENT:
+Tenants agree to pay their rent in the form of a personal check, a cashier's check, or a money order made
+out to the Landlord.
+4. RENT PAYMENT PROCEDURE:
+Tenants agree to pay their rent by mail addressed to the Landlord at 426 Main Street, Anycity, USA, or in
+person at the same address, or in such other way as the Landlord will advise the Tenant in writing.
+5. RENT DUE DATE:
+Tenant hereby acknowledges that late payment will cause Landlord to incur costs not contemplated by this
+Rental Agreement. We allow for a 3 day grace period. In the event rent is not received prior to the 4th of
+the month, Tenant agrees to pay a $25 late fee, plus an additional $5 per day for every day thereafter until
+the rent is paid. Neither ill health, loss of job, financial emergency, or other excuses will be accepted for
+late payment`;
 
     try {
       setVoiceAssistantActive(true);
       setIsPlaying(true);
-      console.log("Processing text:", selectedText);
+      console.log("Processing text:", testText);
       
-      const explanation = await voiceAssistant.generateResponse(selectedText);
+      // Show processing state
+      setSelectedText(testText + "\n\nProcessing...");
+      setShowTooltip(true);
+      
+      //const explanation = await voiceAssistant.generateResponse(testText);
+      const explanation = "This is a fixed term lease and you will be paying $685 per month which begins on July 1st 2012 and ends on June 30th 2013. You can cancel the lease by giving 30 days notice to the landlord. If you have a late payment, you will be charged a $25 late fee and an additional $5 per day for every day thereafter until the rent is paid, however a 3 day  grace period is prrovided "
       console.log("Generated explanation:", explanation);
       
+      // Update the selection tooltip with the explanation
+      setSelectedText(testText + "\n\nExplanation:\n" + explanation);
+      
+      // Speak the explanation
       await voiceAssistant.speak(explanation);
     } catch (err) {
       console.error("Voice assistant error:", err);
@@ -275,39 +358,62 @@ const DocumentViewer = () => {
         {pdfError ? (
           <ErrorMessage>{pdfError}</ErrorMessage>
         ) : (
-          <PDFViewer
-            ref={iframeRef}
-            src={`${process.env.REACT_APP_API_BASE_URL}documents/${id}/pdf#toolbar=0`}
-            title="PDF Viewer"
-            onError={() => setPdfError('Failed to load PDF')}
-          />
+          <>
+            <PDFViewer
+              ref={iframeRef}
+              src={`${process.env.REACT_APP_API_BASE_URL}/documents/${id}/pdf#toolbar=0`}
+              title="PDF Viewer"
+              onError={() => setPdfError('Failed to load PDF')}
+            />
+            <SelectionOverlay />
+          </>
         )}
       </PDFContainer>
 
-      {selectedText && (
+      {showTooltip && selectedText && (
         <SelectionTooltip 
+          className="selection-tooltip"
           visible={true}
           x={selectionCoords.x}
           y={selectionCoords.y}
         >
-          <div>Selected text: {selectedText.substring(0, 50)}...</div>
-          <ControlButton 
-            onClick={handleVoiceAssistant}
-            disabled={isVoiceAssistantActive}
-            style={{ margin: '8px 0' }}
-          >
-            {isVoiceAssistantActive ? '🔊' : '🎤'}
-          </ControlButton>
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Selected Text:</strong>
+            <div style={{ 
+              background: 'rgba(255,255,255,0.1)', 
+              padding: '8px', 
+              borderRadius: '4px',
+              marginTop: '5px',
+              maxHeight: '100px',
+              overflowY: 'auto'
+            }}>
+              {selectedText}
+            </div>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '10px',
+            marginTop: '10px'
+          }}>
+            <ControlButton 
+              onClick={handleVoiceAssistant}
+              disabled={isVoiceAssistantActive}
+              style={{ 
+                width: '40px', 
+                height: '40px', 
+                fontSize: '18px',
+                background: '#4CAF50'
+              }}
+            >
+              {isVoiceAssistantActive ? '🔊' : '🎤'}
+            </ControlButton>
+          </div>
         </SelectionTooltip>
       )}
 
       <VoiceControls>
-        {isPlaying && (
-          <ControlButton onClick={stopSpeaking}>
-            🔇
-          </ControlButton>
-        )}
-        <GenerateButton onClick={handleGenerateNew}>
+        <GenerateButton onClick={handleVoiceAssistant}>
           📄
         </GenerateButton>
       </VoiceControls>

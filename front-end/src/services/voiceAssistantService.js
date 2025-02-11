@@ -1,45 +1,47 @@
-const GOOGLE_CLOUD_API_KEY = process.env.REACT_APP_GOOGLE_CLOUD_API_KEY;
+import axios from 'axios';
 
-class VoiceAssistant {
-  constructor() {
-    this.synthesis = window.speechSynthesis;
-    this.recognition = new window.webkitSpeechRecognition();
-    this.recognition.continuous = false;
-    this.recognition.lang = 'en-US';
-  }
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+
+const voiceAssistant = {
+  async generateResponse(text) {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/analyze`, {
+        text,
+        instructions: `
+          Please explain this text in a simple and clear way. Include:
+          1. A brief summary in plain language
+          2. Key points or takeaways
+          3. Any important terms explained
+          4. Practical implications or actions needed
+          
+          Format the response in a conversational tone, as if explaining to someone.
+        `
+      });
+
+      return response.data.explanation;
+    } catch (error) {
+      throw new Error('Failed to generate explanation');
+    }
+  },
 
   speak(text) {
     return new Promise((resolve, reject) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.onend = resolve;
-      utterance.onerror = reject;
-      this.synthesis.speak(utterance);
+      try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9; // Slightly slower for better comprehension
+        utterance.pitch = 1;
+        utterance.onend = resolve;
+        utterance.onerror = reject;
+        window.speechSynthesis.speak(utterance);
+      } catch (error) {
+        reject(error);
+      }
     });
+  },
+
+  stop() {
+    window.speechSynthesis.cancel();
   }
+};
 
-  async generateResponse(text) {
-    try {
-      const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_HUGGINGFACE_API_KEY}`
-        },
-        body: JSON.stringify({
-          inputs: `Please explain this text in simple terms: ${text}`,
-          parameters: {
-            max_length: 100,
-            temperature: 0.7
-          }
-        })
-      });
-
-      const data = await response.json();
-      return data[0].generated_text;
-    } catch (error) {
-      throw new Error('Failed to generate response');
-    }
-  }
-}
-
-export default new VoiceAssistant(); 
+export default voiceAssistant; 
