@@ -4,6 +4,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import documentService from '../services/documentService';
 import voiceAssistant from '../services/voiceAssistantService';
 import templateService from '../services/templateService';
+import SideMenu from './SideMenu';
+import TemplateForm from './TemplateForm';
+
+import DocumentEditor from './DocumentEditor';
 
 const ViewerContainer = styled.div`
   background-color: black;
@@ -162,6 +166,56 @@ const SelectionOverlay = styled.div`
   z-index: 1000;
 `;
 
+const MenuButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  
+  span {
+    display: block;
+    width: 25px;
+    height: 3px;
+    background: white;
+    border-radius: 3px;
+    transition: all 0.3s;
+  }
+  
+  &:hover span {
+    background: #ccc;
+  }
+`;
+
+const MenuItem = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  
+  span {
+    display: block;
+    width: 25px;
+    height: 3px;
+    background: white;
+    border-radius: 3px;
+    transition: all 0.3s;
+  }
+  
+  &:hover span {
+    background: #ccc;
+  }
+`;
+
 const DocumentViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -175,6 +229,10 @@ const DocumentViewer = () => {
   const iframeRef = useRef(null);
   const containerRef = useRef(null);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isMenuOpen, setMenuOpen] = useState(false);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   useEffect(() => {
     const loadDocument = async () => {
@@ -310,25 +368,51 @@ late payment`;
     setIsPlaying(false);
   };
 
-  const handleGenerateNew = async () => {
+  const handleGenerateTemplate = async (formData) => {
     try {
-      const customization = {
-        'tenant name': 'Jane Smith',
-        'lease duration': '24 months',
-        'monthly rent': '$2000',
-        'start date': '2024-04-01',
-        'end date': '2026-03-31'
-      };
-
+      setIsGenerating(true);
+      
       const response = await templateService.generateFromTemplate({
         sourceDocumentId: id,
-        customization
+        customization: {
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+          rentAmount: formData.rentAmount,
+          lateFee: formData.lateFee,
+          gracePeriod: formData.gracePeroid
+        }
       });
 
       // Navigate to the new document
       navigate(`/document/${response.id}`);
     } catch (error) {
-      setPdfError('Failed to generate new document: ' + error.message);
+      setPdfError('Failed to generate template: ' + error.message);
+    } finally {
+      setIsGenerating(false);
+      setShowTemplateForm(false);
+    }
+  };
+
+  const handleSaveEdit = async (newContent) => {
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/documents/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: newContent })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save changes');
+      }
+      const updatedDoc = await response.json();
+      setDocument(updatedDoc);
+      setShowEditor(false);
+      window.location.reload();
+    } catch (error) {
+      console.error('Save error:', error);
+      throw error;
     }
   };
 
@@ -345,15 +429,48 @@ late payment`;
   return (
     <ViewerContainer ref={containerRef}>
       <Navigation>
-        <NavButton onClick={() => navigate(`/document/${parseInt(id) - 1}`)}>
-          ←
-        </NavButton>
+        <MenuButton onClick={() => setMenuOpen(true)}>
+          <span></span>
+          <span></span>
+          <span></span>
+        </MenuButton>
         <NavButton onClick={() => navigate('/timeline')}>×</NavButton>
-        <NavButton onClick={() => navigate(`/document/${parseInt(id) + 1}`)}>
-          →
-        </NavButton>
       </Navigation>
-      
+
+      <SideMenu
+        isOpen={isMenuOpen}
+        onClose={() => setMenuOpen(false)}
+        onVoiceExplain={() => {
+          setMenuOpen(false);
+          handleVoiceAssistant();
+        }}
+        onGenerateTemplate={() => {
+          setMenuOpen(false);
+          setShowTemplateForm(true);
+        }}
+        onEditDocument={() => {
+          setMenuOpen(false);
+          setShowEditor(true);
+        }}
+        onReturnHome={() => navigate('/timeline')}
+      />
+
+      {showTemplateForm && (
+        <TemplateForm
+          onClose={() => setShowTemplateForm(false)}
+          onSubmit={handleGenerateTemplate}
+          isLoading={isGenerating}
+        />
+      )}
+
+      {showEditor && document && (
+        <DocumentEditor
+          content={document.content}
+          onSave={handleSaveEdit}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
+
       <PDFContainer>
         {pdfError ? (
           <ErrorMessage>{pdfError}</ErrorMessage>
@@ -411,12 +528,6 @@ late payment`;
           </div>
         </SelectionTooltip>
       )}
-
-      <VoiceControls>
-        <GenerateButton onClick={handleVoiceAssistant}>
-          📄
-        </GenerateButton>
-      </VoiceControls>
     </ViewerContainer>
   );
 };

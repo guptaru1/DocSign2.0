@@ -122,63 +122,70 @@ The monthly rent shall be [RENT_AMOUNT] dollars, payable on the first day of eac
   }
 ];
 
-
+// Add PDFKit for PDF generation
+const PDFDocument = require('pdfkit');
 
 app.post('/api/generate-document', async (req, res) => {
   try {
     const { sourceDocumentId, customization } = req.body;
     
-    // Find the source document
     const sourceDocument = documents.find(doc => doc.id === parseInt(sourceDocumentId));
     if (!sourceDocument) {
       return res.status(404).json({ error: 'Source document not found' });
     }
 
-    // Get the content from the source document
+    // Get template content from source PDF
     let templateContent = '';
     if (sourceDocument.filePath) {
-      // If it's a PDF, we need to extract text first
-      // You might need to install pdf-parse: npm install pdf-parse
       const pdf = require('pdf-parse');
       const dataBuffer = fs.readFileSync(sourceDocument.filePath);
       const pdfData = await pdf(dataBuffer);
       templateContent = pdfData.text;
-    } else {
-      templateContent = sourceDocument.content;
     }
 
-    // Call Llama API for document generation
-    const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: `Using this document as a template:
-                ${templateContent}
-                Generate a new version with these changes:
-                ${Object.entries(customization).map(([key, value]) => `Replace ${key} with: ${value}`).join('\n')}
-                Maintain the same format and structure as the original document.`,
-        parameters: {
-          max_length: 2000,
-          temperature: 0.2
-        }
-      })
+    // Replace placeholders with customization values
+    let newContent = templateContent
+      .replace(/beginning.*?2012/i, `beginning ${customization.startDate}`)
+      .replace(/ending.*?2013/i, `ending ${customization.endDate}`)
+      .replace(/\$685/g, `$${customization.rentAmount}`)
+      .replace(/\$25/g, `$${customization.lateFee}`)
+      .replace(/3 day grace period/g, `${customization.gracePeriod} day grace period`);
+
+    // Generate new PDF file
+    const newPdfPath = path.join(uploadsDir, `generated-${Date.now()}.pdf`);
+    const doc = new PDFDocument();
+    const writeStream = fs.createWriteStream(newPdfPath);
+
+    // Add content to PDF
+    doc.fontSize(12);
+    doc.text(newContent, {
+      align: 'left',
+      lineGap: 5
     });
 
-    const result = await response.json();
-    const generatedContent = result[0].generated_text;
+    // Finalize PDF file
+    doc.pipe(writeStream);
+    doc.end();
 
-    // Create new document
+    // Wait for the file to be written
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    // Create new document entry
     const newDoc = {
       id: documents.length + 1,
       title: `Modified ${sourceDocument.title}`,
-      content: generatedContent,
+      filePath: newPdfPath,
+      fileName: path.basename(newPdfPath),
+      content: newContent,
+      isEditable: true,
       date: new Date().toISOString()
     };
 
     documents.push(newDoc);
+    console.log('New document created:', newDoc);
     res.json(newDoc);
   } catch (error) {
     console.error('Document generation error:', error);
@@ -312,7 +319,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// Update the PDF serving endpoint
+// Update the PDF serving endpoint to handle both original and generated PDFs
 app.get('/api/documents/:id/pdf', (req, res) => {
   try {
     const document = documents.find(doc => doc.id === parseInt(req.params.id));
@@ -323,26 +330,56 @@ app.get('/api/documents/:id/pdf', (req, res) => {
     
     if (!document.filePath) {
       console.log('File path is missing for document:', document);
+      
+      // If it's an editable document, generate PDF from content
+      if (document.isEditable && document.content) {
+        const tempPdfPath = path.join(uploadsDir, `temp-${Date.now()}.pdf`);
+        const doc = new PDFDocument();
+        const writeStream = fs.createWriteStream(tempPdfPath);
+        
+        doc.fontSize(12);
+        doc.text(document.content, {
+          align: 'left',
+          lineGap: 5
+        });
+        
+        doc.pipe(writeStream);
+        doc.end();
+        
+        writeStream.on('finish', () => {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline');
+          res.removeHeader('X-Frame-Options');
+          res.sendFile(tempPdfPath, () => {
+            // Clean up temporary file after sending
+            fs.unlink(tempPdfPath, err => {
+              if (err) console.error('Error deleting temp file:', err);
+            });
+          });
+        });
+        
+        return;
+      }
+      
       return res.status(404).json({ error: 'PDF file path is missing' });
     }
 
     const filePath = path.resolve(document.filePath);
-    console.log('Attempting to serve file:', filePath);
+    console.log('Serving file:', filePath);
 
     if (!fs.existsSync(filePath)) {
       console.log('File does not exist:', filePath);
       return res.status(404).json({ error: 'PDF file not found' });
     }
     
-    // Update these headers
+    // Set headers and send file
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
-    res.removeHeader('X-Frame-Options'); // Remove this header completely
+    res.removeHeader('X-Frame-Options');
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
     res.sendFile(filePath);
   } catch (error) {
     console.error('PDF serving error:', error);
@@ -426,6 +463,7 @@ app.post('/api/analyze', async (req, res) => {
     res.status(500).json({ error: 'Failed to analyze text' });
   }
 });
+
 const axios = require('axios');
 
 app.post('/api/analyz', async (req, res) => {
@@ -474,34 +512,128 @@ app.post('/api/analyz', async (req, res) => {
   }
 });
   
-app.get('/api/model-metadata', async (req, res) => {
-  try {
-    // Get model metadata from HuggingFace API
-    const response = await axios.get(
-      'https://huggingface.co/api/models/meta-llama/Llama-2-7b-chat-hf',
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`, // Pass your HuggingFace API key here
-        },
-      }
-    );
 
-    // Check if the response data is valid
-    if (!response.data) {
-      throw new Error('Failed to fetch model metadata');
+
+// Add endpoint for emailing documents
+app.post('/api/email-document', async (req, res) => {
+  try {
+    const { documentId, recipientEmail, emailBody } = req.body;
+    
+    const document = documents.find(doc => doc.id === parseInt(documentId));
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
     }
 
-    // Return the model metadata
-    res.json({
-      modelMetadata: response.data,
+    // Create email transporter
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_APP_PASSWORD // Use app-specific password
+      }
     });
-    console.log("fetched data orioerly");
+
+    // Send email with PDF attachment
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: recipientEmail,
+      subject: `Document: ${document.title}`,
+      text: emailBody || 'Please find the attached document.',
+      attachments: [{
+        filename: document.fileName,
+        path: document.filePath
+      }]
+    });
+
+    res.json({ message: 'Document sent successfully' });
   } catch (error) {
-    console.error('Error fetching metadata:', error);
-    res.status(500).json({ error: 'Failed to fetch model metadata' });
+    console.error('Email error:', error);
+    res.status(500).json({ error: 'Failed to send email: ' + error.message });
   }
 });
 
+// Update the PUT endpoint to properly handle PDF content updates
+app.put('/api/documents/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+    
+    const document = documents.find(doc => doc.id === parseInt(id));
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    if (!document.isEditable) {
+      return res.status(403).json({ error: 'This document cannot be edited' });
+    }
+
+    // Update content
+    document.content = content;
+
+    // Generate new PDF from updated content
+    const newPdfPath = path.join(uploadsDir, `edited-${Date.now()}.pdf`);
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50
+    });
+
+    const writeStream = fs.createWriteStream(newPdfPath);
+
+    // Add content to PDF with proper formatting
+    doc.pipe(writeStream);
+    
+    // Set font and size
+    doc.font('Helvetica')
+       .fontSize(12)
+       .lineGap(3);
+
+    // Split content into paragraphs and add to PDF
+    const paragraphs = content.split('\n').filter(p => p.trim());
+    paragraphs.forEach((paragraph, index) => {
+      doc.text(paragraph.trim(), {
+        align: 'left',
+        continued: false
+      });
+      
+      // Add space between paragraphs
+      if (index < paragraphs.length - 1) {
+        doc.moveDown();
+      }
+    });
+
+    doc.end();
+
+    // Wait for the file to be written
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    // Delete old PDF file if it exists
+    if (document.filePath && fs.existsSync(document.filePath)) {
+      try {
+        fs.unlinkSync(document.filePath);
+      } catch (err) {
+        console.error('Error deleting old PDF:', err);
+      }
+    }
+
+    // Update document with new file path
+    document.filePath = newPdfPath;
+    document.fileName = path.basename(newPdfPath);
+    
+    console.log('Document updated successfully:', {
+      id: document.id,
+      title: document.title,
+      filePath: document.filePath
+    });
+
+    res.json(document);
+  } catch (error) {
+    console.error('Document update error:', error);
+    res.status(500).json({ error: 'Failed to update document: ' + error.message });
+  }
+});
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

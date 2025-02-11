@@ -4,6 +4,7 @@ import DocumentBall from './DocumentBall';
 import Sidebar from './Sidebar';
 import documentService from '../services/documentService';
 import { useDropzone } from 'react-dropzone';
+import { useNavigate } from 'react-router-dom';
 
 const TimelineContainer = styled.div`
   background-color: black;
@@ -132,6 +133,104 @@ const UploadButton = styled.button`
   }
 `;
 
+const TimelineItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  margin: 100px 0;
+  opacity: ${props => props.isVisible ? 1 : 0};
+  transform: translateX(${props => props.isVisible ? 0 : (props.isLeft ? '-50px' : '50px')});
+  transition: all 0.5s ease-out;
+  padding: ${props => props.isLeft ? '0 50% 0 0' : '0 0 0 50%'};
+
+  &:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+  }
+`;
+
+const Tooltip = styled.div`
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  border-radius: 4px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  max-width: 300px;
+  transition: all 0.2s;
+  z-index: 1000;
+  margin-bottom: 8px;
+
+  &:after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: rgba(0, 0, 0, 0.9);
+  }
+`;
+
+const Circle = styled.div`
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(145deg, #1a1a1a, #333);
+  border-radius: 50%;
+  box-shadow: 8px 8px 16px #0d0d0d,
+              -8px -8px 16px #333333;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+    background: linear-gradient(145deg, #333, #1a1a1a);
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    width: 20%;
+    height: 20%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+  }
+`;
+
+const TimelineDate = styled.div`
+  color: #888;
+  font-size: 14px;
+  margin-top: 10px;
+`;
+
+const TimelineTitle = styled.div`
+  color: white;
+  font-size: 16px;
+  margin-top: 5px;
+  text-align: center;
+  max-width: 200px;
+`;
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
 const Timeline = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +238,10 @@ const Timeline = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [visibleDocs, setVisibleDocs] = useState(new Set());
   const [uploading, setUploading] = useState(false);
+  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filters, setFilters] = useState({ year: '', month: '' });
+  const [filteredDocuments, setFilteredDocuments] = useState([]);
 
   useEffect(() => {
     loadDocuments();
@@ -174,6 +277,36 @@ const Timeline = () => {
 
     return () => observer.disconnect();
   }, [documents]);
+
+  useEffect(() => {
+    let filtered = [...documents];
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(doc => 
+        doc.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.content?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply year filter
+    if (filters.year) {
+      filtered = filtered.filter(doc => {
+        const docYear = new Date(doc.date).getFullYear().toString();
+        return docYear === filters.year;
+      });
+    }
+
+    // Apply month filter
+    if (filters.month) {
+      filtered = filtered.filter(doc => {
+        const docMonth = (new Date(doc.date).getMonth() + 1).toString();
+        return docMonth === filters.month;
+      });
+    }
+
+    setFilteredDocuments(filtered);
+  }, [documents, searchTerm, filters]);
 
   const onDrop = async (acceptedFiles) => {
     try {
@@ -225,6 +358,21 @@ const Timeline = () => {
     multiple: false
   });
 
+  const handleDocumentClick = (docId) => {
+    navigate(`/document/${docId}`);
+  };
+
+  const handleSearch = (term) => {
+    setSearchTerm(term);
+  };
+
+  const handleFilterChange = (type, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [type]: value
+    }));
+  };
+
   if (loading) {
     return (
       <LoadingContainer>
@@ -251,23 +399,42 @@ const Timeline = () => {
         <span></span>
       </MenuButton>
       
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setSidebarOpen(false)}
+        onSearch={handleSearch}
+        onFilterChange={handleFilterChange}
+      />
       
       <CurvedLine />
       
       <BallsContainer>
-        {documents.map((doc, index) => (
-          <BallWrapper 
-            key={doc.id}
+        {filteredDocuments.map((doc, index) => (
+          <TimelineItem 
+            key={doc.id} 
+            onClick={() => handleDocumentClick(doc.id)}
             isLeft={index % 2 === 0}
             isVisible={visibleDocs.has(doc.id.toString())}
+            className="document-ball"
+            data-doc-id={doc.id}
           >
-            <DocumentBall
-              document={doc}
-              isVisible={visibleDocs.has(doc.id.toString())}
-              isLeft={index % 2 === 0}
-            />
-          </BallWrapper>
+            <Circle>
+              <Tooltip className="tooltip">
+                {doc.content ? (
+                  doc.content.match(/<p>(.*?)<\/p>/g)?.map((p, i) => (
+                    <div key={i}>
+                      {p.replace(/<\/?p>/g, '')}
+                      {i < doc.content.match(/<p>(.*?)<\/p>/g).length - 1 && <br />}
+                    </div>
+                  )) || doc.content
+                ) : (
+                  'No content available'
+                )}
+              </Tooltip>
+            </Circle>
+            <TimelineDate>{formatDate(doc.date)}</TimelineDate>
+            <TimelineTitle>{doc.title}</TimelineTitle>
+          </TimelineItem>
         ))}
       </BallsContainer>
       
