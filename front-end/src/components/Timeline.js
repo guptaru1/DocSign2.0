@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import documentService from '../services/documentService';
 import { useDropzone } from 'react-dropzone';
 import { useNavigate } from 'react-router-dom';
+import EmailAttachments from './EmailAttachments';
 
 const TimelineContainer = styled.div`
   background-color: black;
@@ -242,6 +243,7 @@ const Timeline = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({ year: '', month: '' });
   const [filteredDocuments, setFilteredDocuments] = useState([]);
+  const [showEmailAttachments, setShowEmailAttachments] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -373,6 +375,10 @@ const Timeline = () => {
     }));
   };
 
+  const handleAttachmentSaved = (newDoc) => {
+    setDocuments(prev => [...prev, newDoc]);
+  };
+
   if (loading) {
     return (
       <LoadingContainer>
@@ -404,6 +410,7 @@ const Timeline = () => {
         onClose={() => setSidebarOpen(false)}
         onSearch={handleSearch}
         onFilterChange={handleFilterChange}
+        onImportEmail={() => setShowEmailAttachments(true)}
       />
       
       <CurvedLine />
@@ -444,6 +451,13 @@ const Timeline = () => {
           {uploading ? '...' : '+'}
         </UploadButton>
       </div>
+
+      {showEmailAttachments && (
+        <EmailAttachments
+          onClose={() => setShowEmailAttachments(false)}
+          onAttachmentSaved={handleAttachmentSaved}
+        />
+      )}
     </TimelineContainer>
   );
 };

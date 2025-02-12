@@ -66,7 +66,7 @@ const Description = styled.p`
 const Button = styled.button`
   padding: 1rem 2rem;
   font-size: 1.1rem;
-  background: linear-gradient(45deg, #4CAF50, #45a049);
+  background: linear-gradient(45deg, #d3d3d3, #a9a9a9);
   border: none;
   border-radius: 30px;
   color: white;
@@ -203,6 +203,16 @@ const LandingPage = () => {
 
   return (
     <Container>
+
+<Section ref={el => sectionRefs.current[4] = el} index={4}>
+        <Content index={4}>
+          <Title>Get Started</Title>
+          <Description>
+            Join us in revolutionizing document management. Experience the future today.
+          </Description>
+        </Content>
+      </Section>
+      
       {sections.map((section, index) => (
         <Section
           key={index}
@@ -244,17 +254,7 @@ const LandingPage = () => {
         </Content>
       </WaitlistSection>
 
-      <Section ref={el => sectionRefs.current[4] = el} index={4}>
-        <Content index={4}>
-          <Title>Get Started</Title>
-          <Description>
-            Join us in revolutionizing document management. Experience the future today.
-          </Description>
-          <Button onClick={() => navigate('/timeline')}>
-            Enter Timeline
-          </Button>
-        </Content>
-      </Section>
+
     </Container>
   );
 };

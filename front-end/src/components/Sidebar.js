@@ -62,7 +62,29 @@ const CloseButton = styled.button`
   cursor: pointer;
 `;
 
-const Sidebar = ({ isOpen, onClose, onSearch, onFilterChange }) => {
+const ImportButton = styled.button`
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+`;
+
+const Sidebar = ({ isOpen, onClose, onSearch, onFilterChange, onImportEmail }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -105,6 +127,10 @@ const Sidebar = ({ isOpen, onClose, onSearch, onFilterChange }) => {
           ))}
         </Select>
       </FilterSection>
+
+      <ImportButton onClick={onImportEmail}>
+        📥 Import from Email
+      </ImportButton>
     </SidebarContainer>
   );
 };

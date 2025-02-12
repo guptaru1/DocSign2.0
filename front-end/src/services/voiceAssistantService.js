@@ -27,6 +27,7 @@ const voiceAssistant = {
   speak(text) {
     return new Promise((resolve, reject) => {
       try {
+        console.log("working adi olease i loe you");
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 0.9; // Slightly slower for better comprehension
         utterance.pitch = 1;

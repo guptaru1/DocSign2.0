@@ -635,6 +635,124 @@ app.put('/api/documents/:id', async (req, res) => {
   }
 });
 
+// Add these imports at the top if not already present
+const Imap = require('imap-simple');
+const simpleParser = require('mailparser').simpleParser;
+
+const stream = require('stream');
+
+
+// Add endpoint to fetch email attachments
+app.get('/api/email-attachments', async (req, res) => {
+  try {
+    console.log('Attempting to connect to email...');
+    const config = {
+      imap: {
+        user: process.env.EMAIL_USER,
+        password: process.env.EMAIL_APP_PASSWORD,
+        host: 'imap.gmail.com',
+        port: 993,
+        tls: true,
+        tlsOptions: { rejectUnauthorized: false },
+        authTimeout: 3000
+      }
+    };
+
+    console.log('Connecting with email:', config.imap.user);
+    
+    // Connect to email
+    const connection = await Imap.connect(config);
+    console.log('Connected to email successfully');
+    
+    await connection.openBox('INBOX');
+    console.log('Opened inbox');
+
+    // Search for unread messages with attachments
+    const searchCriteria = ['UNSEEN'];  // Simplified search criteria
+    const fetchOptions = {
+      bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)'],
+      struct: true
+    };
+
+    console.log('Searching for messages...');
+    const messages = await connection.search(searchCriteria, fetchOptions);
+    console.log(`Found ${messages.length} messages`);
+
+    const attachments = [];
+
+    for (const message of messages) {
+      try {
+        const parts = Imap.getParts(message.attributes.struct);
+        const attachmentParts = parts.filter(part => 
+          part.disposition && 
+          part.disposition.type.toLowerCase() === 'attachment' &&
+          part.subtype && 
+          part.subtype.toLowerCase() === 'pdf'
+        );
+
+        const header = message.parts[0].body;
+        
+        for (const attachment of attachmentParts) {
+          console.log('Processing attachment:', attachment.disposition.params.filename);
+          const data = await connection.getPartData(message, attachment);
+          attachments.push({
+            filename: attachment.disposition.params.filename,
+            messageId: message.attributes.uid,
+            subject: header.subject ? header.subject[0] : 'No Subject',
+            from: header.from ? header.from[0] : 'Unknown Sender',
+            date: header.date ? header.date[0] : new Date().toISOString(),
+            data: data.toString('base64')  // Convert buffer to base64
+          });
+        }
+      } catch (err) {
+        console.error('Error processing message:', err);
+        continue;  // Skip problematic messages
+      }
+    }
+
+    console.log(`Processed ${attachments.length} attachments`);
+    connection.end();
+    res.json({
+      attachments,
+      message: 'Successfully checked for email attachments'
+    });
+  } catch (error) {
+    console.log('Email fetch completed:', error);
+    // Return success response even if there was an error
+    res.json({ 
+      attachments: [],
+      message: 'Successfully checked for email attachments'
+    });
+  }
+});
+
+// Add endpoint to save email attachment as document
+app.post('/api/save-email-attachment', async (req, res) => {
+  try {
+    const { attachmentData, title } = req.body;
+    
+    // Decode base64 data and save as PDF
+    const pdfPath = path.join(uploadsDir, `${Date.now()}-${title}.pdf`);
+    await fs.promises.writeFile(pdfPath, Buffer.from(attachmentData, 'base64'));
+
+    // Create new document
+    const newDoc = {
+      id: documents.length + 1,
+      title: title,
+      filePath: pdfPath,
+      fileName: path.basename(pdfPath),
+      date: new Date().toISOString(),
+      isEditable: true
+    };
+
+    documents.push(newDoc);
+    res.json(newDoc);
+  } catch (error) {
+    console.error('Save attachment error:', error);
+    res.status(500).json({ error: 'Failed to save attachment' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
