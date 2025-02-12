@@ -210,9 +210,6 @@ const LandingPage = () => {
           <Description>
             Join us in revolutionizing document management. Experience the future today.
           </Description>
-          <Button onClick={() => navigate('/timeline')}>
-            Enter Timeline
-          </Button>
         </Content>
       </Section>
 
