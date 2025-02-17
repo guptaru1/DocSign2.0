@@ -30,13 +30,20 @@ const upload = multer({ storage: storage });
 console.log(process.env.HUGGINGFACE_API_KEY);
 
 
-
+const allowedOrigins = ['https://doc-sign2-0-vy8g.vercel.app']; 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true); // Allow the request
+    } else {
+      callback(new Error('Not allowed by CORS')); // Reject the request
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true // Set to true if using cookies or authentication headers
 }));
+
 app.use(express.json());
 
 // Sample documents data
