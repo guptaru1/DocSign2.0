@@ -174,7 +174,7 @@ const LandingPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:3001/api/waitlist', {
+      const response = await fetch('https://docsign2-0.onrender.com/api/waitlist', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
