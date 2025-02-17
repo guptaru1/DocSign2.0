@@ -391,40 +391,48 @@ app.get('/api/documents/:id/pdf', (req, res) => {
 app.use('/uploads', express.static(uploadsDir));
 
 const waitlist = [];
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(
+  process.env.SUPABASE_URL, // Your Supabase URL
+  process.env.SUPABASE_ANON_KEY // Your Supabase anon key
+);
+
+async function insertEmail(email) {
+  const { data, error } = await supabase.from('emails').insert([{ email }]);
+  
+  if (error) {
+    console.error('Error inserting email:', error.message);
+    return;
+  }
+
+  console.log('Email inserted successfully:', data);
+}
+
+// Example usage
+insertEmail('test@example.com');
 
 app.post('/api/waitlist', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Invalid email address' });
+
+    try{
+      const { email } = req.body;
+      console.log(email);
+      
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: 'Invalid email address' });
+      }
+      const {data, error} = await supabase.from('emails').insert([{ email }]);
+      if (error) {
+        throw error;
+      }
+      console.log('New waitlist signup:', email);
+      return res.status(200).json({message: 'Email added to waitlist'});
+    }
+    catch (error) {
+      return res.status(500).json({ message: 'Error registering email.' });
     }
 
-    // Check if email already exists
-    if (waitlist.includes(email)) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // Add to waitlist
-    waitlist.push({
-      email,
-      timestamp: new Date().toISOString(),
-      ip: req.ip
-    });
-
-    // In production, you'd want to:
-    // 1. Save to a database (MongoDB, PostgreSQL, etc.)
+    // In production, you'd want to:    // 1. Save to a database (MongoDB, PostgreSQL, etc.)
     // 2. Send a confirmation email
-    // 3. Add to your email marketing system (Mailchimp, SendGrid, etc.)
-    
-    // For now, just log it
-    console.log('New waitlist signup:', email);
-
-    res.json({ message: 'Successfully joined waitlist' });
-  } catch (error) {
-    console.error('Waitlist error:', error);
-    res.status(500).json({ error: 'Failed to join waitlist' });
-  }
 });
 
 // Add this new endpoint for text analysis
