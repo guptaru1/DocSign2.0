@@ -194,30 +194,39 @@ const LandingPage = () => {
     <Container>
       <Section background="#000">
         <AnimatedContent className="animated-content" direction="left">
-          <Title>Welcome to Declutter</Title>
-          <Subtitle>Your intelligent document management solution</Subtitle>
+          <Title>Welcome to DocTalk</Title>
+          <Subtitle>Talk to your doctor in a language that you know</Subtitle>
           <DocumentGraphic />
         </AnimatedContent>
       </Section>
 
       <Section background="#111">
         <AnimatedContent className="animated-content" direction="right">
-          <Title>Smart Document Management</Title>
-          <Subtitle>Experience our intuitive timeline interface that brings your documents to life</Subtitle>
+          <Title>Smart Medical Knowledge</Title>
+          <Subtitle> Have you gotten a patient who can't speak English? We have a solution.
+            Experience our real-time translation in the patient's language, including explantions of MRI's as well as procedure follow-ups.</Subtitle>
         </AnimatedContent>
       </Section>
 
       <Section background="#000">
         <AnimatedContent className="animated-content" direction="left">
-          <Title>Voice-Enabled Assistant</Title>
-          <Subtitle>Let our AI explain your documents with natural voice interaction</Subtitle>
+          <Title>HIPPA-Compliant</Title>
+          <Subtitle>We will never compromise the trust between a patient and the doctor </Subtitle>
         </AnimatedContent>
       </Section>
 
       <Section background="#111">
+        <AnimatedContent className="animated-content" direction="left">
+          <Title> Hospital Integration </Title>
+          <Subtitle> Seamlessly intergrates with your existing infrastructure  </Subtitle>
+        </AnimatedContent>
+      </Section>
+
+      <Section background="#000">
         <AnimatedContent className="animated-content" direction="right">
           <Title>Get Started Now</Title>
-          <Subtitle>Join thousands of users managing their documents smarter</Subtitle>
+          <Subtitle> Join us to create a world where language is not a barrier to getting access to healthcare </Subtitle>
+        
           {!submitted ? (
             <WaitlistForm>
               <Input

@@ -30,7 +30,7 @@ const upload = multer({ storage: storage });
 console.log(process.env.HUGGINGFACE_API_KEY);
 
 
-const allowedOrigins = ['https://doc-sign2-0-vy8g.vercel.app']; 
+const allowedOrigins = ['https://doc-sign2-0-vy8g.vercel.app', 'http://localhost:3000']; 
 app.use(cors({
   origin: function(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
